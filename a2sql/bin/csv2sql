@@ -1,0 +1,164 @@
+#!/usr/bin/python
+
+import codecs,re,sqlite3,sys,types
+dbg = 1
+
+# usage example:
+# 
+#   csv2sql a.db --table foo 'x=$1' 'y=$3' 'z=$8' --file a.csv
+# 
+# TODO: 
+#   - currently we assume a single record is a single line, which
+#     is not necessarily the case when a field contains a newline.
+#     using csv module eliminates this problem?
+#   - proper handling of char encodings? (currently using codecs.decode(x, "utf-8"),
+#     assuming the csv file is unicode)
+#   - my experience is bad. 
+#     it should do a reasonable job just with 
+#       csv2sql a.db --table foo --file a.csv
+#
+
+#
+# csv2sql --- convert csv files into sqlite3 table
+#
+# syntax:
+#  csv2sql database arg arg arg ...
+#
+# Each arg is either:
+# 
+# (1) --table tablename
+# (2) column=val   (e.g., x=$3 means the 3rd column becomes field x)
+# (3) filename
+#
+# 
+
+
+def Es(s):
+    sys.stderr.write(s)
+    sys.stderr.flush()
+
+def interpret(x):
+    if x is None: return None
+    try:
+        return int(x)
+    except:
+        pass
+    try:
+        return float(x)
+    except:
+        pass
+    assert (type(x) is types.StringType), x
+    x = x.strip()
+    if len(x) >= 2 and x[:1] == '"' and x[-1:] == '"':
+        return interpret(x[1:-1])
+    if x[:1] == "$":
+        try:
+            return [ int(x[1:]) ]
+        except:
+            pass
+        return [ x[1:] ]
+    return codecs.decode(x, "utf-8")
+
+def sql(cu, cmd, values=()):
+    if dbg>=2:
+        Es("%s; %s\n" % (cmd, values))
+    cu.execute(cmd, values)
+
+def process_file(cu, csv_file, table_name, tables, columns, column_values, separator):
+    """
+    cu       : cursor object
+    csv_file : csv filename
+    table_name : table name 
+    columns : list of column names 
+    column_values : column name -> [ number ] or 
+    """
+    if table_name not in tables:
+        sql(cu, ("create table if not exists %s (%s)" 
+                 % (table_name, ",".join(columns))))
+    sql(cu, 'select count(*) from %s where file="%s"' % (table_name, csv_file))
+    (x,) = cu.fetchone()
+    if x > 0:
+        Es("%s already loaded\n" % csv_file)
+        return
+    fp = open(csv_file, "rb")
+    values_placeholder = []
+    value_indices = []
+    for c in columns:
+        if type(column_values[c]) is types.ListType:
+            [ idx ] = column_values[c]
+            value_indices.append(idx)
+            values_placeholder.append("?")
+        else:
+            values_placeholder.append(repr(column_values[c]))
+    cmd = ("insert or replace into %s (%s) values (%s)" 
+           % (table_name, ",".join(columns), ",".join(values_placeholder)))
+    line_no = 0
+    for line in fp:
+        line_no = line_no + 1
+        fields = { "line" : line_no, "file" : csv_file }
+        for i,f in enumerate(line.split(separator)):
+            fields[i + 1] = f
+        values = tuple([ interpret(fields.get(idx)) for idx in value_indices ])
+        sql(cu, cmd, values)
+    fp.close()
+
+def process_commands(cu, args):
+    # x=y x:=y
+    column_val_pat = re.compile("([^:=]+)(:?=)(.*)")
+    columns = [ "file", "line" ]
+    column_values = { "file" : [ "file" ], "line" : [ "line" ] }
+    tables = {}                 # table names that we have seen
+    table_name = None
+    separator = "\t"
+    n = len(args)
+    i = 0
+    while i < n:
+        arg = args[i]
+        if dbg>=2:
+            Es("processing args[%d] = %s\n" % (i, arg))
+        i = i + 1
+        if arg == "--table":
+            # specify table name
+            table_name = args[i]
+            i = i + 1
+        elif arg == "--file":
+            # specify csv file name to import
+            csv_file = args[i]
+            i = i + 1
+            process_file(cu, csv_file, table_name, tables,
+                         columns, column_values, separator)
+            columns = [ "file", "line" ]
+            column_values = { "file" : [ "file" ], "line" : [ "line" ] }
+        else:
+            # either x=y type or filename
+            m = column_val_pat.match(arg)
+            if m:
+                column = m.group(1)
+                eq = m.group(2)
+                val = interpret(m.group(3))
+                if column not in column_values:
+                    columns.append(column)
+                column_values[column] = val
+            else:
+                csv_file = arg
+                process_file(cu, csv_file, table_name, tables, 
+                             columns, column_values)
+                columns = [ "file", "line" ]
+                column_values = { "file" : [ "file" ], "line" : [ "line" ] }
+
+def main():
+    if len(sys.argv) < 2:
+        Es("usage: csv2sql db_file arg arg arg ...\n")
+        return 1
+    db = sys.argv[1]
+    args = sys.argv[2:]
+    conn = sqlite3.connect(db)
+    cu = conn.cursor()
+    process_commands(cu, args)
+    conn.commit()
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+

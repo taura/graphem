@@ -1,0 +1,231 @@
+\documentclass[12pt,dvipdfmx]{beamer}
+\usepackage{graphicx}
+\DeclareGraphicsExtensions{.pdf}
+\DeclareGraphicsExtensions{.eps}
+\graphicspath{{out/}{out/tex/}{out/tex/gpl/}{out/tex/svg/}{out/tex/lsvg/}{out/tex/dot/}}
+% \graphicspath{{out/}{out/tex/}{out/pdf/}{out/eps/}{out/tex/gpl/}{out/tex/svg/}{out/pdf/dot/}{out/pdf/gpl/}{out/pdf/img/}{out/pdf/odg/}{out/pdf/svg/}{out/eps/dot/}{out/eps/gpl/}{out/eps/img/}{out/eps/odg/}{out/eps/svg/}}
+\usepackage{listings}
+\usepackage{fancybox}
+\usepackage{hyperref}
+\usepackage{color}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% themes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usetheme{default} % Szeged
+%% no navigation bar
+% default boxes Bergen Boadilla Madrid Pittsburgh Rochester
+%% tree-like navigation bar
+% Antibes JuanLesPins Montpellier
+%% toc sidebar
+% Berkeley PaloAlto Goettingen Marburg Hannover Berlin Ilmenau Dresden Darmstadt Frankfurt Singapore Szeged
+%% Section and Subsection Tables
+% Copenhagen Luebeck Malmoe Warsaw
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% innerthemes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \useinnertheme{circles}	% default circles rectangles rounded inmargin
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% outerthemes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% outertheme
+% \useoutertheme{default}	% default infolines miniframes smoothbars sidebar sprit shadow tree smoothtree
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% colorthemes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usecolortheme{seahorse}
+%% special purpose
+% default structure sidebartab 
+%% complete 
+% albatross beetle crane dove fly seagull 
+%% inner
+% lily orchid rose
+%% outer
+% whale seahorse dolphin
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% fontthemes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usefonttheme{serif}  
+% default professionalfonts serif structurebold structureitalicserif structuresmallcapsserif
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% generally useful beamer settings
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+\AtBeginDvi{\special{pdf:tounicode EUC-UCS2}}
+% do not show navigation
+\setbeamertemplate{navigation symbols}{}
+% show page numbers
+\setbeamertemplate{footline}[frame number]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% define some colors for convenience
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\mido}[1]{{\color{green}#1}}
+\newcommand{\mura}[1]{{\color{purple}#1}}
+\newcommand{\ore}[1]{{\color{orange}#1}}
+\newcommand{\ao}[1]{{\color{blue}#1}}
+\newcommand{\aka}[1]{{\color{red}#1}}
+
+\setbeamercolor{ex}{bg=cyan!20!white}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% customize beamer template
+%% https://www.opt.mist.i.u-tokyo.ac.jp/~tasuku/beamer.html
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%\renewcommand{\familydefault}{\sfdefault}  % 英文をサンセリフ体に
+%\renewcommand{\kanjifamilydefault}{\gtdefault}  % 日本語をゴシック体に
+\usefonttheme{structurebold} % タイトル部を太字
+\setbeamerfont{alerted text}{series=\bfseries} % Alertを太字
+\setbeamerfont{section in toc}{series=\mdseries} % 目次は太字にしない
+\setbeamerfont{frametitle}{size=\Large} % フレームタイトル文字サイズ
+\setbeamerfont{title}{size=\LARGE} % タイトル文字サイズ
+\setbeamerfont{date}{size=\small}  % 日付文字サイズ
+
+\definecolor{UniBlue}{RGB}{0,150,200} 
+\definecolor{AlertOrange}{RGB}{255,76,0}
+\definecolor{AlmostBlack}{RGB}{38,38,38}
+\setbeamercolor{normal text}{fg=AlmostBlack}  % 本文カラー
+\setbeamercolor{structure}{fg=UniBlue} % 見出しカラー
+\setbeamercolor{block title}{fg=UniBlue!50!black} % ブロック部分タイトルカラー
+\setbeamercolor{alerted text}{fg=AlertOrange} % \alert 文字カラー
+\mode<beamer>{
+    \definecolor{BackGroundGray}{RGB}{254,254,254}
+    \setbeamercolor{background canvas}{bg=BackGroundGray} % スライドモードのみ背景をわずかにグレーにする
+}
+
+
+%フラットデザイン化
+\setbeamertemplate{blocks}[rounded] % Blockの影を消す
+\useinnertheme{circles} % 箇条書きをシンプルに
+\setbeamertemplate{navigation symbols}{} % ナビゲーションシンボルを消す
+\setbeamertemplate{footline}[frame number] % フッターはスライド番号のみ
+
+%タイトルページ
+\setbeamertemplate{title page}{%
+    \vspace{2.5em}
+    {\usebeamerfont{title} \usebeamercolor[fg]{title} \inserttitle \par}
+    {\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\insertsubtitle \par}
+    \vspace{1.5em}
+    \begin{flushright}
+        \usebeamerfont{author}\insertauthor\par
+        \usebeamerfont{institute}\insertinstitute \par
+        \vspace{3em}
+        \usebeamerfont{date}\insertdate\par
+        \usebeamercolor[fg]{titlegraphic}\inserttitlegraphic
+    \end{flushright}
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% how to typset code
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\lstset{language = C,
+numbers = left,
+numberstyle = {\tiny \emph},
+numbersep = 10pt,
+breaklines = true,
+breakindent = 40pt,
+frame = tlRB,
+frameround = ffft,
+framesep = 3pt,
+rulesep = 1pt,
+rulecolor = {\color{blue}},
+rulesepcolor = {\color{blue}},
+flexiblecolumns = true,
+keepspaces = true,
+basicstyle = \ttfamily\scriptsize,
+identifierstyle = ,
+commentstyle = ,
+stringstyle = ,
+showstringspaces = false,
+tabsize = 4,
+escapechar=\@,
+}
+
+\title{Beamer slides with lots of plots}
+\institute{University of Tokyo}
+\author{Kenjiro Taura}
+\date{}
+
+\AtBeginSection[]
+{
+\begin{frame}
+\frametitle{Contents}
+\tableofcontents[currentsection]
+\end{frame}
+}
+
+\iffalse
+\AtBeginSubsection[]
+{
+\begin{frame}
+\frametitle{Contents}
+\tableofcontents[currentsection,currentsubsection]
+\end{frame}
+}
+\fi
+
+\begin{document}
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{Contents}
+\tableofcontents
+\end{frame}
+
+%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{}
+\input{out/tex/data/mm/mnk_vs_t_over_mnk}
+\end{frame}
+
+%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{}
+\input{out/tex/data/mm/m_vs_t_with_nk_plots}
+\end{frame}
+
+%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{}
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_200}
+\end{frame}
+
+%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{}
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_250}
+\end{frame}
+
+%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{}
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_300}
+\end{frame}
+
+%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{}
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_350}
+\end{frame}
+
+%%%%%%%%%%%%%%%%% 
+\begin{frame}
+\frametitle{}
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_400}
+\end{frame}
+
+\end{document}
+
+
+

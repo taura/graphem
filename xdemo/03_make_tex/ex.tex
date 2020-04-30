@@ -1,0 +1,63 @@
+\documentclass[12pt,dvipdfmx]{article}
+\setlength{\oddsidemargin}{-1.3truecm}
+\setlength{\evensidemargin}{-1.3truecm}
+\setlength{\textwidth}{18.5truecm}
+\setlength{\headsep}{1truecm}
+\setlength{\topmargin}{-2truecm}
+\setlength{\textheight}{23truecm}
+\usepackage{graphicx}
+\DeclareGraphicsExtensions{.pdf}
+\DeclareGraphicsExtensions{.eps}
+\graphicspath{{out/}{out/tex/}{out/tex/gpl/}{out/tex/svg/}{out/tex/dot/}}
+%\graphicspath{{out/}{out/tex/}{out/pdf/}{out/eps/}{out/tex/gpl/}{out/tex/svg/}{out/pdf/dot/}{out/pdf/gpl/}{out/pdf/img/}{out/pdf/odg/}{out/pdf/svg/}{out/eps/dot/}{out/eps/gpl/}{out/eps/img/}{out/eps/odg/}{out/eps/svg/}}
+\usepackage{listings}
+\usepackage{fancybox}
+\usepackage{hyperref}
+\usepackage{color}
+
+\lstset{language = C,
+numbers = left,
+numberstyle = {\tiny \emph},
+numbersep = 10pt,
+breaklines = true,
+breakindent = 40pt,
+frame = tlRB,
+frameround = ffft,
+framesep = 3pt,
+rulesep = 1pt,
+rulecolor = {\color{blue}},
+rulesepcolor = {\color{blue}},
+flexiblecolumns = true,
+keepspaces = true,
+basicstyle = \ttfamily\scriptsize,
+identifierstyle = ,
+commentstyle = ,
+stringstyle = ,
+showstringspaces = false,
+tabsize = 4,
+escapechar=\@,
+}
+
+\title{\TeX\ with lots of plots}
+\author{Kenjiro Taura}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\input{out/tex/data/mm/mnk_vs_t_over_mnk}
+
+\input{out/tex/data/mm/m_vs_t_with_nk_plots}
+
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_200}
+
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_250}
+
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_300}
+
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_350}
+
+\input{out/tex/data/mm/m_vs_t_with_n_plots_k_graphs_400}
+
+
+\end{document}
