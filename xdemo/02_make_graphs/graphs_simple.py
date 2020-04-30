@@ -15,13 +15,13 @@ def mnk_vs_t_over_mnk():
 
 
 def m_vs_t_with_nk_plots():
-    g.graphs((db, r"""select M,avg(T) from a where N=%(N)s and K=%(K)s group by M"""),
+    g.graphs((db, r"""select M,avg(T) from a where N={N} and K={K} group by M"""),
              N=g.do_sql(db, "select distinct N from a order by N"),
              K=g.do_sql(db, "select distinct K from a order by K"),
     )
 
 def m_vs_t_with_n_plots_k_graphs():
-    g.graphs((db, r"""select M,avg(T) from a where N=%(N)s and K=%(K)s group by M"""),
+    g.graphs((db, r"""select M,avg(T) from a where N={N} and K={K} group by M"""),
              graph_vars=["K"],
              N=g.do_sql(db, "select distinct N from a order by N"),
              K=g.do_sql(db, "select distinct K from a order by K"),
