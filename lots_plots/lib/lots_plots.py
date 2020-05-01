@@ -4,6 +4,7 @@ _dbg=0
 
 def _Es(s):
     sys.stderr.write(s)
+    sys.stderr.flush()
 
 class graph_attributes:
     def __init__(self, kw, sg):
