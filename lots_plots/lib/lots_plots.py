@@ -648,12 +648,12 @@ class lots_plots:
         driver
         """
         tex2 = "%s.tmp" % tex
-        fp = open(tex, "rb")
+        fp = open(tex, "r")
         x = fp.read()
         fp.close()
         y = re.sub("includegraphics\{([^\}]+)\}", 
                    r"includegraphics{\1.eps}", x)
-        wp = open(tex2, "wb")
+        wp = open(tex2, "w")
         wp.write(y)
         wp.close()
         os.rename(tex2, tex)
@@ -725,7 +725,7 @@ class lots_plots:
         if init_statements != "":
             co.executescript(init_statements)
         if init_file != "":
-            fp = open(init_file, "rb")
+            fp = open(init_file, "r")
             script = fp.read()
             fp.close()
             co.executescript(script)
@@ -1163,7 +1163,7 @@ class lots_plots:
         return self.show_graphs()
 
     def generate_tex_file(self, tex_file):
-        wp = open(tex_file, "wb")
+        wp = open(tex_file, "w")
         wp.write(r"""
 \documentclass[8pt,dvipdfmx]{article}
 \setlength{\oddsidemargin}{-1.3truecm}
