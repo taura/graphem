@@ -1,7 +1,202 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""
+txt2sql
+"""
+import re
+import sqlite3
+import sys
 
+dbg = 0
 
-help_string = r"""usage:
+def Ws(msg):
+    """
+    write msg to stdout
+    """
+    sys.stdout.write(msg)
+
+def Es(msg):
+    """
+    write msg to stderr
+    """
+    sys.stderr.write(msg)
+
+try:
+    import udf
+    Es("udf module loaded\n")
+except ImportError:
+    udf = None
+
+def interpret(column, val_str):
+    """
+    interpret a colum string
+    """
+    parse_func = "parse_%s" % column
+    if hasattr(udf, parse_func):
+        fun = getattr(udf, parse_func)
+        return fun(val_str)
+    try:
+        return int(val_str)
+    except ValueError:
+        pass
+    try:
+        return float(val_str)
+    except ValueError:
+        pass
+    try:
+        return val_str.decode("utf-8")
+    except ValueError:
+        pass
+    return val_str
+
+def do_sql(db_cur, cmd, vals=()):
+    """
+    do sql statement cmd
+    """
+    if dbg >= 2:
+        Es("%s; %s\n" % (cmd, vals))
+    try:
+        db_cur.execute(cmd, vals)
+    except Exception as exc:
+        Es("sql cmd %s; vals=%s caused an error %s\n"
+           % (cmd, vals, exc.args))
+
+def valid_column_name(col):
+    """
+    make it a valid column name
+    """
+    col = col.replace(":", "_")
+    col = col.replace("-", "_")
+    return col
+
+def set_column(column, val, columns, column_vals):
+    """
+    set column
+    """
+    if column not in columns:
+        columns.append(column)
+    column_vals[column] = interpret(column, val)
+
+def apply_ctxt_regexp(line, regexp, columns, column_vals):
+    """
+    apply ctxt regexp
+    """
+    match = regexp.search(line)
+    if match:
+        for column, val in match.groupdict().items():
+            set_column(column, val, columns, column_vals)
+        return 1
+    return 0
+
+def drop_table(db_cur, table_name):
+    """
+    drop table table_name
+    """
+    Es("dropping table %s\n" % table_name)
+    drop_cmd = ("drop table if exists %s" % table_name)
+    do_sql(db_cur, drop_cmd)
+
+def apply_row_regexp(db_cur, line, regexp, table_name,
+                     tables, columns, column_vals):
+    """
+    apply row regexp
+    """
+    res = apply_ctxt_regexp(line, regexp, columns, column_vals)
+    if res:
+        match = regexp.search(line)
+        assert match, (regexp, line)
+        if table_name not in tables:
+            Es("creating table %s with columns (%s) if not exists\n"
+               % (table_name, ",".join(columns)))
+            create_cmd = ("create table if not exists %s (%s)"
+                          % (table_name, ",".join(columns)))
+            do_sql(db_cur, create_cmd)
+            tables[table_name] = None
+        insert_cmd = ("insert into %s (%s) values (%s)"
+                      % (table_name, ",".join(columns),
+                         ",".join(["?"] * len(columns))))
+        do_sql(db_cur, insert_cmd,
+               tuple([column_vals.get(column) for column in columns]))
+        return 1
+    return 0
+
+# ------ exe = ./mtouch_rand_rand region_sz = 73720277 ------
+# touch 73720277 bytes 368601385 times
+#   0 : 82.853196 sec to touch 368601385 times (224.777224 nsec/touch)
+#   1 : 82.768455 sec to touch 368601385 times (224.547325 nsec/touch)
+#   2 : 82.769757 sec to touch 368601385 times (224.550857 nsec/touch)
+#   3 : 82.678061 sec to touch 368601385 times (224.302090 nsec/touch)
+#   4 : 82.860049 sec to touch 368601385 times (224.795816 nsec/touch)
+# ------ exe = ./mtouch_seq_seq region_sz = 103208387 ------
+# touch 103208387 bytes 516041935 times
+#   0 : 11.172545 sec to touch 516041935 times (21.650460 nsec/touch)
+#   1 : 10.623999 sec to touch 516041935 times (20.587472 nsec/touch)
+#   2 : 10.624042 sec to touch 516041935 times (20.587556 nsec/touch)
+#   3 : 10.624235 sec to touch 516041935 times (20.587929 nsec/touch)
+#   4 : 10.624011 sec to touch 516041935 times (20.587496 nsec/touch)
+
+#
+# usage
+#
+# ./txt2sql --exp "------ exe = (?P<exe>[^ ]+) region_sz = (?P<region_sz>\d+)" \
+#           --row "\d+ : (?P<sec>[^ ]+) sec to touch ..."
+
+def process_file(db_cur, txt_file, ctxt_regexps, row_regexps,
+                 table_name, tables, columns, column_vals):
+    """
+    process file
+    """
+    if table_name in tables:
+        do_sql(db_cur, ('select count(*) from %s where file="%s"'
+                        % (table_name, txt_file)))
+        (n_files,) = db_cur.fetchone()
+        if n_files > 0:
+            Es("%s already loaded\n" % txt_file)
+            return
+    set_column("file", txt_file, columns, column_vals)
+    if txt_file == "":
+        txt_fp = sys.stdin
+    else:
+        txt_fp = open(txt_file, "rb")
+    line_no = 0
+    for line in txt_fp:
+        line_no = line_no + 1
+        set_column("line", line_no, columns, column_vals)
+        if dbg >= 3:
+            Es("processing line: %s\n" % line.rstrip())
+        for _, regexp, col in ctxt_regexps:
+            if apply_ctxt_regexp(line, regexp, columns, column_vals):
+                col[0] = col[0] + 1 # ???
+        for _, regexp, col in row_regexps:
+            if apply_row_regexp(db_cur, line, regexp, table_name,
+                                tables, columns, column_vals):
+                col[0] = col[0] + 1 # ???
+    if txt_file != "":
+        txt_fp.close()
+
+def safe_re_compile(exp):
+    """
+    safely compile regexp
+    """
+    try:
+        return re.compile(exp)
+    except re.error as exc:
+        Es("error: regexp '%s' %s\n" % (exp, exc.args))
+        return None
+
+def safe_atoi(num_str):
+    """
+    safely atoi
+    """
+    try:
+        return int(num_str)
+    except ValueError:
+        return None
+
+def show_help():
+    """
+    show help string
+    """
+    help_string = r"""usage:
 
   txt2sql db_file arg arg arg ...
 
@@ -109,167 +304,12 @@ txt2sql a.db \
 
 
 """
-
-
-import xml.dom.minidom
-import codecs,glob,re,sqlite3,sys
-
-dbg=0
-
-def Ws(s):
-    sys.stdout.write(s)
-
-def Es(s):
-    sys.stderr.write(s)
-
-try:
-    import udf
-    Es("udf module loaded\n")
-except ImportError,e:
-    udf = None
-
-def interpret(column, x):
-    parse_func = "parse_%s" % column
-    if hasattr(udf, parse_func):
-        f = getattr(udf, parse_func)
-        return f(x)
-    try:
-        return int(x)
-    except:
-        pass
-    try:
-        return float(x)
-    except:
-        pass
-    try:
-        return unicode(x, "utf-8")
-    except:
-        pass
-    return x
-
-def do_sql(cu, cmd, vals=()):
-    if dbg>=2:
-        Es("%s; %s\n" % (cmd, vals))
-    try:
-        cu.execute(cmd, vals)
-    except Exception,e:
-        Es("sql cmd %s; vals=%s caused an error %s\n" % (cmd, vals, e.args))
-
-def valid_column_name(c):
-    c = c.replace(":", "_")
-    c = c.replace("-", "_")
-    return c
-
-def set_column(column, val, columns, column_vals):
-    if column not in columns: columns.append(column)
-    column_vals[column] = interpret(column, val)
-
-def apply_ctxt_regexp(line, regexp, columns, column_vals):
-    m = regexp.search(line)
-    if m:
-        for column,val in m.groupdict().items():
-            set_column(column, val, columns, column_vals)
-        return 1
-    else:
-        return 0
-
-def drop_table(cu, table_name):
-    Es("dropping table %s\n" % table_name)
-    drop_cmd = ("drop table if exists %s" % table_name)
-    do_sql(cu, drop_cmd)
-
-def apply_row_regexp(cu, line, regexp, table_name, tables, columns, column_vals):
-    res = apply_ctxt_regexp(line, regexp, columns, column_vals)
-    if res:
-        m = regexp.search(line)
-        assert m
-        if table_name not in tables:
-            Es("creating table %s with columns (%s) if not exists\n"
-               % (table_name, ",".join(columns)))
-            create_cmd = ("create table if not exists %s (%s)"
-                          % (table_name, ",".join(columns)))
-            do_sql(cu, create_cmd)
-            tables[table_name] = None
-        insert_cmd = ("insert into %s (%s) values (%s)"
-                      % (table_name, ",".join(columns),
-                         ",".join([ "?" ] * len(columns))))
-        if 1:
-            do_sql(cu, insert_cmd, 
-                   tuple([ column_vals.get(column) for column in columns ]))
-        else:
-            sys.stdout.write("%s\n" % "|".join(map(str, [ column_vals.get(column) for column in columns ])))
-        return 1
-    else:
-        return 0
-
-# ------ exe = ./mtouch_rand_rand region_sz = 73720277 ------
-# touch 73720277 bytes 368601385 times
-#   0 : 82.853196 sec to touch 368601385 times (224.777224 nsec/touch)
-#   1 : 82.768455 sec to touch 368601385 times (224.547325 nsec/touch)
-#   2 : 82.769757 sec to touch 368601385 times (224.550857 nsec/touch)
-#   3 : 82.678061 sec to touch 368601385 times (224.302090 nsec/touch)
-#   4 : 82.860049 sec to touch 368601385 times (224.795816 nsec/touch)
-# ------ exe = ./mtouch_seq_seq region_sz = 103208387 ------
-# touch 103208387 bytes 516041935 times
-#   0 : 11.172545 sec to touch 516041935 times (21.650460 nsec/touch)
-#   1 : 10.623999 sec to touch 516041935 times (20.587472 nsec/touch)
-#   2 : 10.624042 sec to touch 516041935 times (20.587556 nsec/touch)
-#   3 : 10.624235 sec to touch 516041935 times (20.587929 nsec/touch)
-#   4 : 10.624011 sec to touch 516041935 times (20.587496 nsec/touch)
-
-#
-# usage
-#
-# ./txt2sql --exp "------ exe = (?P<exe>[^ ]+) region_sz = (?P<region_sz>\d+)" \
-#           --row "\d+ : (?P<sec>[^ ]+) sec to touch (?P<touch>[^ ]+) times ((?P<nsec_per_touch>[^ ]+) nsec/touch)"
-
-def process_file(cu, txt_file, ctxt_regexps, row_regexps,
-                 table_name, tables, columns, column_vals):
-    if table_name in tables:
-        do_sql(cu, ('select count(*) from %s where file="%s"' 
-                    % (table_name, txt_file)))
-        (x,) = cu.fetchone()
-        if x > 0:
-            Es("%s already loaded\n" % txt_file)
-            return
-    set_column("file", txt_file, columns, column_vals)
-    if txt_file == "":
-        fp = sys.stdin
-    else:    
-        fp = open(txt_file, "rb")
-    line_no = 0
-    for line in fp:
-        line_no = line_no + 1
-        set_column("line", line_no, columns, column_vals)
-        if dbg>=3:
-            Es("processing line: %s\n" % line.rstrip())
-        for _,regexp,c in ctxt_regexps:
-            if apply_ctxt_regexp(line, regexp, columns, column_vals):
-                c[0] = c[0] + 1
-        for _,regexp,c in row_regexps:
-            if apply_row_regexp(cu, line, regexp, table_name, 
-                                tables, columns, column_vals):
-                c[0] = c[0] + 1
-    if txt_file != "":
-        fp.close()
-
-def safe_re_compile(exp):
-    try:
-        return re.compile(exp)
-    except Exception,e:
-        Es("error: regexp '%s' %s\n" % (exp, e.args))
-        return None
-
-def safe_atoi(x):
-    try:
-        return int(x)
-    except Exception,e:
-        return None
-
-def show_help():
     Es(help_string)
 
-def process_commands(cu, args):
+def process_commands(db_cur, args):
+    """
+    process commands
+    """
     global dbg
     # x=y x:=y
     column_val_pat = re.compile("([^:=]+)(:?=)(.*)")
@@ -281,11 +321,11 @@ def process_commands(cu, args):
     ctxt_regexps = []
     row_regexps = []
     txt_file = ""
-    n = len(args)
+    n_args = len(args)
     i = 0
-    while i < n:
+    while i < n_args:
         arg = args[i]
-        if dbg>=2:
+        if dbg >= 2:
             Es("processing args[%d] = %s\n" % (i, arg))
         i = i + 1
         if arg == "--table":
@@ -293,11 +333,11 @@ def process_commands(cu, args):
             table_name = args[i]
             i = i + 1
             if drop_first:
-                drop_table(cu, table_name)
+                drop_table(db_cur, table_name)
         elif arg == "--drop":
             # specify table name
             drop_first = 1
-            drop_table(cu, table_name)
+            drop_table(db_cur, table_name)
         elif arg == "--verbosity":
             # specify table name
             dbg = safe_atoi(args[i])
@@ -310,48 +350,52 @@ def process_commands(cu, args):
             # specify txt file name to import
             txt_file = args[i]
             i = i + 1
-            process_file(cu, txt_file, ctxt_regexps, row_regexps, 
+            process_file(db_cur, txt_file, ctxt_regexps, row_regexps,
                          table_name, tables, columns, column_vals)
-        elif arg == "--exp" or arg == "-e":
+        elif arg in ["--exp", "-e"]:
             # specify regexp that indicates context
             regexp = safe_re_compile(args[i])
-            if regexp is None: return -1
-            ctxt_regexps.append((args[i], regexp, [ 0 ])) # counter
+            if regexp is None:
+                return -1
+            ctxt_regexps.append((args[i], regexp, [0])) # counter
             i = i + 1
-        elif arg == "--row" or arg == "-r":
+        elif arg in ["--row", "-r"]:
             # specify regexp that indicates context
             regexp = safe_re_compile(args[i])
-            if regexp is None: return -1
-            row_regexps.append((args[i], regexp, [ 0 ]))
+            if regexp is None:
+                return -1
+            row_regexps.append((args[i], regexp, [0]))
             i = i + 1
         else:
             # either x=y type or filename
-            m = column_val_pat.match(arg)
-            if m:
-                column = m.group(1)
-                eq = m.group(2)
-                val = interpret(column, m.group(3))
+            match = column_val_pat.match(arg)
+            if match:
+                column = match.group(1)
+                val = interpret(column, match.group(3))
                 set_column(column, val, columns, column_vals)
             else:
                 txt_file = arg
-                process_file(cu, txt_file, ctxt_regexps, row_regexps, 
+                process_file(db_cur, txt_file, ctxt_regexps, row_regexps,
                              table_name, tables, columns, column_vals)
     # no --file given, read stdin
     if txt_file == "":
         Es("reading data from stdin ...\n")
-        process_file(cu, txt_file, ctxt_regexps, row_regexps, 
+        process_file(db_cur, txt_file, ctxt_regexps, row_regexps,
                      table_name, tables, columns, column_vals)
-    for regexp_s,regexp,c in ctxt_regexps:
-        if c[0] == 0:
+    for regexp_s, regexp, col in ctxt_regexps:
+        if col[0] == 0:
             Es("warning : never matched regexp '%s'\n" % regexp_s)
-    for regexp_s,regexp,c in row_regexps:
-        if c[0] == 0:
+    for regexp_s, regexp, col in row_regexps:
+        if col[0] == 0:
             Es("warning : never matched row regexp '%s'\n" % regexp_s)
     return 0
 
 def main():
+    """
+    main
+    """
     if len(sys.argv) < 2:
-        Es(r"""usage: 
+        Es(r"""usage:
   txt2sql db_file arg arg arg ...
 Each arg is one of --exp REGEXP, --row REGEXP, --table TABLE, --file FILE, and --drop.
 Run 'txt2sql --help' to see more help.
@@ -361,14 +405,13 @@ Run 'txt2sql --help' to see more help.
     if sys.argv[1] == "--help":
         show_help()
     else:
-        db = sys.argv[1]
+        db_sqlite = sys.argv[1]
         args = sys.argv[2:]
-        conn = sqlite3.connect(db)
-        cu = conn.cursor()
-        process_commands(cu, args)
+        conn = sqlite3.connect(db_sqlite)
+        db_cur = conn.cursor()
+        process_commands(db_cur, args)
         conn.commit()
     return 0
 
 if __name__ == "__main__":
     main()
-

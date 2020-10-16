@@ -1,33 +1,24 @@
 #!/usr/bin/python3
 
 """
-csv2sql
+xlsx2sql
 """
-import codecs
+
 import re
 import sqlite3
 import sys
+import openpyxl
 dbg = 1
 
 # usage example:
 #
-#   csv2sql a.db --table foo 'x=$1' 'y=$3' 'z=$8' --file a.csv
+#   xlsx2sql a.db --table foo 'x=$1' 'y=$3' 'z=$8' --file a.xlsx
 #
-#   - currently we assume a single record is a single line, which
-#     is not necessarily the case when a field contains a newline.
-#     using csv module eliminates this problem?
-#   - proper handling of char encodings? (currently using codecs.decode(x, "utf-8"),
-#     assuming the csv file is unicode)
-#   - my experience is bad.
-#     it should do a reasonable job just with
-#       csv2sql a.db --table foo --file a.csv
 #
-
-#
-# csv2sql --- convert csv files into sqlite3 table
+# xlsx2sql --- convert csv files into sqlite3 table
 #
 # syntax:
-#  csv2sql database arg arg arg ...
+#  xlsx2sql database arg arg arg ...
 #
 # Each arg is either:
 #
@@ -45,31 +36,17 @@ def Es(msg):
     sys.stderr.write(msg)
     sys.stderr.flush()
 
-def interpret(cell_str):
+def interpret(cell_value):
     """
     make a string sqlite3 value
     """
-    if cell_str is None:
-        return None
-    try:
-        return int(cell_str)
-    except ValueError:
-        pass
-    try:
-        return float(cell_str)
-    except ValueError:
-        pass
-    assert (isinstance(cell_str, type(""))), cell_str
-    cell_str = cell_str.strip()
-    if len(cell_str) >= 2 and cell_str[:1] == '"' and cell_str[-1:] == '"':
-        return interpret(cell_str[1:-1])
-    if cell_str[:1] == "$":
+    if isinstance(cell_value, type("")) and cell_value[:1] == "$":
         try:
-            return [int(cell_str[1:])]
+            return [int(cell_value[1:])]
         except ValueError:
             pass
         return [cell_str[1:]]
-    return codecs.decode(cell_str, "utf-8")
+    return cell_value
 
 def sql(db_cur, cmd, values=()):
     """
@@ -79,28 +56,30 @@ def sql(db_cur, cmd, values=()):
         Es("%s; %s\n" % (cmd, values))
     db_cur.execute(cmd, values)
 
-def process_file(db_cur, csv_file, table_name, tables,
-                 columns, column_values, separator, skip):
+def process_file(db_cur, xlsx_file, sheet_name, table_name, tables,
+                 columns, column_values, skip):
     """
-    db_cur       : cursor object
-    csv_file : csv filename
+    db_cur       : db_currsor object
+    xlsx_file : csv filename
     table_name : table name
     columns : list of column names
-    column_values : column name -> [number] or
+    column_values : column name -> [ number ] or
     """
     if table_name not in tables:
         sql(db_cur, ("create table if not exists %s (%s)"
                      % (table_name, ",".join(columns))))
-    sql(db_cur, 'select count(*) from %s where file="%s"' % (table_name, csv_file))
+    sql(db_cur,
+        'select count(*) from %s where file="%s"'
+        % (table_name, xlsx_file))
     (n_files,) = db_cur.fetchone()
     if n_files > 0:
-        Es("%s already loaded\n" % csv_file)
+        Es("%s already loaded\n" % xlsx_file)
         return
-    csv_fp = open(csv_file, "rb")
+    wkbk = openpyxl.load_workbook(filename=xlsx_file)
     values_placeholder = []
     value_indices = []
     for col in columns:
-        if isinstance(column_values[col], type([])):
+        if isinstance(column_values[col], type([])): # types.ListType
             [idx] = column_values[col]
             value_indices.append(idx)
             values_placeholder.append("?")
@@ -109,20 +88,23 @@ def process_file(db_cur, csv_file, table_name, tables,
     cmd = ("insert or replace into %s (%s) values (%s)"
            % (table_name, ",".join(columns), ",".join(values_placeholder)))
     line_no = 0
-    for line in csv_fp:
+    if sheet_name is None:
+        wksh = wkbk.worksheets[0]
+    else:
+        wksh = wkbk[sheet_name]
+    for row in wksh.rows:
         line_no = line_no + 1
         if line_no <= skip:
             continue
-        fields = {"line" : line_no, "file" : csv_file}
-        for i, cell in enumerate(line.split(separator)):
-            fields[i + 1] = cell
+        fields = {"line" : line_no, "file" : xlsx_file}
+        for i, cell in enumerate(row):
+            fields[i + 1] = cell.value
         values = tuple([interpret(fields.get(idx)) for idx in value_indices])
         sql(db_cur, cmd, values)
-    csv_fp.close()
 
 def process_commands(db_cur, args):
     """
-    process commands in args
+    process commands in arguments
     """
     # x=y x:=y
     column_val_pat = re.compile("([^:=]+)(:?=)(.*)")
@@ -130,8 +112,8 @@ def process_commands(db_cur, args):
     column_values = {"file" : ["file"], "line" : ["line"]}
     tables = {}                 # table names that we have seen
     table_name = None
+    sheet_name = None
     skip = 0
-    separator = ","
     n_args = len(args)
     i = 0
     while i < n_args:
@@ -149,12 +131,12 @@ def process_commands(db_cur, args):
             i = i + 1
         elif arg == "--file":
             # specify csv file name to import
-            csv_file = args[i]
+            xlsx_file = args[i]
             i = i + 1
-            process_file(db_cur, csv_file, table_name, tables,
-                         columns, column_values, separator, skip)
-            columns = ["file", "line"]
-            column_values = {"file" : ["file"], "line" : ["line"]}
+            process_file(db_cur, xlsx_file, sheet_name, table_name, tables,
+                         columns, column_values, skip)
+            #columns = ["file", "line"]
+            #column_values = {"file" : ["file"], "line" : ["line"]}
         else:
             # either x=y type or filename
             match = column_val_pat.match(arg)
@@ -165,18 +147,19 @@ def process_commands(db_cur, args):
                     columns.append(column)
                 column_values[column] = val
             else:
-                csv_file = arg
-                process_file(db_cur, csv_file, table_name, tables,
-                             columns, column_values, separator, skip)
-                columns = ["file", "line"]
-                column_values = {"file" : ["file"], "line" : ["line"]}
+                xlsx_file = arg
+                process_file(db_cur, xlsx_file, sheet_name,
+                             table_name, tables,
+                             columns, column_values, skip)
+                # columns = ["file", "line"]
+                # column_values = {"file" : ["file"], "line" : ["line"]}
 
 def main():
     """
     main
     """
     if len(sys.argv) < 2:
-        Es("usage: csv2sql db_file arg arg arg ...\n")
+        Es("usage: xlsx2sql db_file arg arg arg ...\n")
         return 1
     db_sqlite = sys.argv[1]
     args = sys.argv[2:]
