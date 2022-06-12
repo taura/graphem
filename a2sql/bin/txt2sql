@@ -42,10 +42,11 @@ def interpret(column, val_str):
         return float(val_str)
     except ValueError:
         pass
-    try:
-        return val_str.decode("utf-8")
-    except ValueError:
-        pass
+    if isinstance(val_str, bytes):
+        try:
+            return val_str.decode("utf-8")
+        except ValueError:
+            pass
     return val_str
 
 def do_sql(db_cur, cmd, vals=()):
@@ -156,7 +157,7 @@ def process_file(db_cur, txt_file, ctxt_regexps, row_regexps,
     if txt_file == "":
         txt_fp = sys.stdin
     else:
-        txt_fp = open(txt_file, "rb")
+        txt_fp = open(txt_file, "r")
     line_no = 0
     for line in txt_fp:
         line_no = line_no + 1
